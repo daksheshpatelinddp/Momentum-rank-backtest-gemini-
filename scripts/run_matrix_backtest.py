@@ -6,24 +6,22 @@ from src.backtester import execute_rank_backtest
 
 def main():
     if not os.path.exists('data/clean/adj_close.parquet'):
-        raise FileNotFoundError("Clean dataset not found. Please run the Data Pipeline workflow first.")
+        raise FileNotFoundError("Clean dataset not found. Run Data Pipeline workflow first.")
 
     close_p = pd.read_parquet('data/clean/adj_close.parquet')
     vol_p = pd.read_parquet('data/clean/adj_vol.parquet')
 
-    # Calculate Indicator Gate & Rank Matrix
     tech_gate, rank_matrix = compute_indicator_gate(close_p, vol_p, min_turnover_cr=1.0)
 
     # Grid Search Testing Configurations
     test_params = [
         (10, 15), # Hold Top 10, exit past 15
-        (10, 25), # Hold Top 10, exit past 25 (Wide Hysteresis)
+        (10, 25), # Hold Top 10, exit past 25
         (20, 30), # Hold Top 20, exit past 30
         (30, 50), # Hold Top 30, exit past 50
     ]
 
     results = []
-
     print("--> Running Parameter Sweep Grid...")
     for top_n, exit_m in test_params:
         res = execute_rank_backtest(
@@ -39,7 +37,6 @@ def main():
     
     print("\n" + tabulate(df_res, headers='keys', tablefmt='github'))
 
-    # Save summary report artifact
     os.makedirs('reports', exist_ok=True)
     df_res.to_csv('reports/backtest_summary.csv', index=False)
 

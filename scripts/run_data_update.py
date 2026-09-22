@@ -7,28 +7,26 @@ def main():
     os.makedirs('data/clean', exist_ok=True)
     
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=365 * 3) # 3-Year historical window
+    start_date = end_date - timedelta(days=365 * 3) # 3-Year rolling window
     
-    print(f"--> Initiating Data Ingestion from {start_date.date()} to {end_date.date()}")
+    start_str = start_date.strftime('%Y-%m-%d')
+    end_str = end_date.strftime('%Y-%m-%d')
     
-    close_p, high_p, low_p, vol_p = build_price_matrices(
-        start_date.strftime('%Y-%m-%d'), 
-        end_date.strftime('%Y-%m-%d')
-    )
+    print(f"--> Initiating Data Pipeline from {start_str} to {end_str}")
     
-    # Apply corporate action split/bonus file if present
-    ca_file = 'data/corporate_actions.csv'
+    close_p, high_p, low_p, vol_p = build_price_matrices(start_str, end_str)
+    
     adj_close, adj_high, adj_low, adj_vol = apply_corporate_action_adjustments(
-        close_p, high_p, low_p, vol_p, corp_actions_csv=ca_file
+        close_p, high_p, low_p, vol_p, start_str, end_str
     )
     
-    # Save optimized Parquet data files
+    # Save optimized binary Parquet datasets
     adj_close.to_parquet('data/clean/adj_close.parquet')
     adj_high.to_parquet('data/clean/adj_high.parquet')
     adj_low.to_parquet('data/clean/adj_low.parquet')
     adj_vol.to_parquet('data/clean/adj_vol.parquet')
     
-    print("--> Data Ingestion Pipeline completed successfully. Parquet artifacts saved.")
+    print("--> Data Pipeline completed successfully. Parquet files saved.")
 
 if __name__ == '__main__':
     main()

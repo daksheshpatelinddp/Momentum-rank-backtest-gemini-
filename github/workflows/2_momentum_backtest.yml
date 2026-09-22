@@ -1,13 +1,13 @@
-name: 1. NSE Bhavcopy Data Pipeline
+name: 2. Momentum Strategy Backtest
 
 on:
-  schedule:
-    # Trigger at 14:00 UTC / 19:30 IST on Weekdays
-    - cron: '0 14 * * 1-5'
+  workflow_run:
+    workflows: ["1. NSE Bhavcopy Data Pipeline"]
+    types: [completed]
   workflow_dispatch: # Allows manual trigger
 
 jobs:
-  build-dataset:
+  run-backtest:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -22,13 +22,13 @@ jobs:
       - name: Install Dependencies
         run: pip install -r requirements.txt
 
-      - name: Download & Adjust NSE Bhavcopies
-        run: python scripts/run_data_update.py
+      - name: Execute Matrix Backtester
+        run: python scripts/run_matrix_backtest.py
 
-      - name: Commit Clean Dataset Parquet Artifacts
+      - name: Commit Backtest Performance Reports
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add data/clean/
-          git commit -m "Automated Data Ingestion & Adjustment Update [skip ci]" || echo "No data changes"
+          git add reports/
+          git commit -m "Automated Strategy Backtest Report Update [skip ci]" || echo "No changes to report"
           git push

@@ -23,7 +23,9 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Download & Adjust NSE Data
-        run: PYTHONPATH=. scripts/run_data_update.py
+        env:
+          PYTHONPATH: .
+        run: python scripts/run_data_update.py   # ✅ Fixed
 
       - name: Commit Clean Dataset Parquet Artifacts
         run: |

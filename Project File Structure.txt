@@ -1,0 +1,15 @@
+.
+├── .github/
+│   └── workflows/
+│       ├── 1_data_pipeline.yml
+│       └── 2_momentum_backtest.yml
+├── src/
+│   ├── nse_fetcher.py        # Updated: Fetches Bhavcopy AND Corporate Actions automatically
+│   ├── data_ingestion.py     # Updated: Applies splits, bonuses, rights & spinoffs dynamically
+│   ├── indicators.py         # RSI, Vol SMA, Turnover & Rank Matrix
+│   └── backtester.py         # Vectorized Rank Engine with Hysteresis
+├── scripts/
+│   ├── run_data_update.py    # Updated CLI entry for automated fetch
+│   └── run_matrix_backtest.py
+├── requirements.txt
+└── README.md

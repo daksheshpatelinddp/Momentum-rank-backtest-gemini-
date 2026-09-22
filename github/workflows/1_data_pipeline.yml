@@ -4,7 +4,7 @@ on:
   schedule:
     # Trigger at 14:00 UTC / 19:30 IST on Weekdays
     - cron: '0 14 * * 1-5'
-  workflow_dispatch: # Allows manual trigger
+  workflow_dispatch: # Allows manual trigger from mobile GitHub app/browser
 
 jobs:
   build-dataset:
@@ -22,7 +22,7 @@ jobs:
       - name: Install Dependencies
         run: pip install -r requirements.txt
 
-      - name: Download & Adjust NSE Bhavcopies
+      - name: Download & Adjust NSE Data
         run: python scripts/run_data_update.py
 
       - name: Commit Clean Dataset Parquet Artifacts

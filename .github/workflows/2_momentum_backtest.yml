@@ -23,7 +23,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Execute Matrix Backtester
-        run: python scripts/run_matrix_backtest.py
+        run: PYTHONPATH=. scripts/run_matrix_backtest.py
 
       - name: Commit Backtest Performance Reports
         run: |

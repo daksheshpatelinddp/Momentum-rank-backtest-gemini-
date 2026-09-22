@@ -1,0 +1,34 @@
+name: 1. NSE Bhavcopy Data Pipeline
+
+on:
+  schedule:
+    # Trigger at 14:00 UTC / 19:30 IST on Weekdays
+    - cron: '0 14 * * 1-5'
+  workflow_dispatch: # Allows manual trigger from mobile GitHub app/browser
+
+jobs:
+  build-dataset:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/python-version@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download & Adjust NSE Data
+        run: python scripts/run_data_update.py
+
+      - name: Commit Clean Dataset Parquet Artifacts
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add data/clean/
+          git commit -m "Automated Data Ingestion & Adjustment Update [skip ci]" || echo "No data changes"
+          git push

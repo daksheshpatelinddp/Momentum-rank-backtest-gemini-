@@ -1,52 +1,58 @@
 import os
-import io
-import zipfile
-import requests
+import re
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+from src.nse_fetcher import fetch_single_bhavcopy, fetch_nse_corporate_actions
 
-NSE_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-}
+def parse_action_factor(subject_text: str) -> float:
+    """
+    Parses NSE corporate action text descriptions into multiplier ratios.
+    Examples:
+    - "Split - From Rs 10/- To Rs 2/-" -> Factor: 5.0
+    - "Bonus 1:1" -> Factor: 2.0
+    - "Bonus 1:2" -> Factor: 1.5
+    """
+    text = str(subject_text).lower()
+    
+    # 1. Check for Stock Splits (e.g., "Split From Rs 10 To Rs 2")
+    if 'split' in text or 'sub-division' in text:
+        nums = re.findall(r'\d+', text)
+        if len(nums) >= 2:
+            old_val, new_val = float(nums[0]), float(nums[1])
+            if old_val > 0 and new_val > 0:
+                return old_val / new_val
 
-def fetch_single_bhavcopy(date_obj: datetime) -> pd.DataFrame:
-    """Downloads and cleans NSE Bhavcopy for a given date."""
-    date_str = date_obj.strftime('%d%b%Y').upper()
-    year_str = date_obj.strftime('%Y')
-    month_str = date_obj.strftime('%b').upper()
-    
-    url = f"https://archives.nseindia.com/content/historical/EQUITIES/{year_str}/{month_str}/cm{date_str}bhav.csv.zip"
-    
-    try:
-        response = requests.get(url, headers=NSE_HEADERS, timeout=10)
-        if response.status_code == 200:
-            with zipfile.ZipFile(io.BytesIO(response.content)) as z:
-                csv_filename = z.namelist()[0]
-                with z.open(csv_filename) as f:
-                    df = pd.read_csv(f)
-                    df = df[df['SERIES'] == 'EQ'].copy()
-                    df['DATE'] = pd.to_datetime(df['TIMESTAMP'], format='%d-%b-%Y')
-                    return df[['DATE', 'SYMBOL', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'TOTTRDQTY', 'TOTTRDVAL']]
-    except Exception as e:
-        pass
-    return None
+    # 2. Check for Bonus Issues (e.g., "Bonus 1:1", "Bonus 1:2")
+    if 'bonus' in text:
+        nums = re.findall(r'\d+', text)
+        if len(nums) >= 2:
+            bonus, held = float(nums[0]), float(nums[1])
+            if held > 0:
+                return (bonus + held) / held
+
+    # 3. Check for Spinoffs / Demergers or Rights (fallback to gap ratio approximation)
+    if 'demerger' in text or 'spinoff' in text or 'rights' in text:
+        # Flag for adjustment handling
+        return -1.0
+        
+    return 1.0
 
 def build_price_matrices(start_date: str, end_date: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Downloads range of Bhavcopies and pivots them into Close, High, Low, Volume matrices."""
+    """Downloads range of Bhavcopies and pivots into price/volume matrices."""
     dates = pd.date_range(start=start_date, end=end_date, freq='B')
     all_records = []
     
-    print(f"--> Starting download for {len(dates)} business days...")
+    print(f"--> Ingesting Bhavcopies for {len(dates)} business days...")
     for idx, d in enumerate(dates):
         df = fetch_single_bhavcopy(d)
         if df is not None:
             all_records.append(df)
-        if (idx + 1) % 50 == 0:
-            print(f"     Processed {idx + 1}/{len(dates)} days...")
+        if (idx + 1) % 100 == 0:
+            print(f"     Downloaded {idx + 1}/{len(dates)} days...")
 
     if not all_records:
-        raise ValueError("No Bhavcopy data downloaded. Verify date ranges or network access.")
+        raise ValueError("No Bhavcopy data downloaded.")
         
     full_df = pd.concat(all_records, ignore_index=True)
     
@@ -57,35 +63,52 @@ def build_price_matrices(start_date: str, end_date: str) -> tuple[pd.DataFrame, 
     
     return close_p, high_p, low_p, vol_p
 
-def apply_corporate_action_adjustments(close_df: pd.DataFrame, high_df: pd.DataFrame, low_df: pd.DataFrame, vol_df: pd.DataFrame, corp_actions_csv: str = None) -> tuple:
-    """
-    Adjusts historical prices for Splits & Bonuses.
-    Reads corporate actions DataFrame containing: ['SYMBOL', 'EX_DATE', 'SPLIT_RATIO']
-    """
+def apply_corporate_action_adjustments(
+    close_df: pd.DataFrame, 
+    high_df: pd.DataFrame, 
+    low_df: pd.DataFrame, 
+    vol_df: pd.DataFrame,
+    start_date: str,
+    end_date: str
+) -> tuple:
+    """Applies dynamic corporate action adjustments to price/volume matrices."""
     adj_close = close_df.copy()
     adj_high = high_df.copy()
     adj_low = low_df.copy()
     adj_vol = vol_df.copy()
 
-    if corp_actions_csv and os.path.exists(corp_actions_csv):
-        ca_df = pd.read_csv(corp_actions_csv)
-        ca_df['EX_DATE'] = pd.to_datetime(ca_df['EX_DATE'])
-
+    # Fetch Corporate Actions directly from NSE
+    print("--> Fetching Corporate Actions from NSE API...")
+    ca_df = fetch_nse_corporate_actions(start_date, end_date)
+    
+    if not ca_df.empty:
         for _, row in ca_df.iterrows():
             sym = row['SYMBOL']
             ex_date = row['EX_DATE']
-            ratio = float(row['SPLIT_RATIO']) # e.g., 2.0 for 1:2 split or 2:1 bonus
+            subject = row['SUBJECT']
 
             if sym in adj_close.columns:
-                # Multiply pre-ex-date prices by adjustment factor (1/ratio)
-                mask = adj_close.index < ex_date
-                adj_close.loc[mask, sym] = adj_close.loc[mask, sym] / ratio
-                adj_high.loc[mask, sym] = adj_high.loc[mask, sym] / ratio
-                adj_low.loc[mask, sym] = adj_low.loc[mask, sym] / ratio
-                # Volume is inverse-adjusted
-                adj_vol.loc[mask, sym] = adj_vol.loc[mask, sym] * ratio
+                factor = parse_action_factor(subject)
+                
+                # If Spinoff/Demerger gap, compute adjustment ratio using ex-date open/close gap
+                if factor == -1.0:
+                    if ex_date in adj_close.index:
+                        loc_idx = adj_close.index.get_loc(ex_date)
+                        if loc_idx > 0:
+                            pre_close = adj_close[sym].iloc[loc_idx - 1]
+                            post_open = adj_close[sym].iloc[loc_idx]
+                            if pre_close > 0 and post_open > 0 and (pre_close / post_open) > 1.15:
+                                factor = pre_close / post_open
 
-    # Forward-fill gaps caused by holidays or missing trading ticks
+                # Apply factor to pre-ex-date historical prices
+                if factor > 1.0:
+                    mask = adj_close.index < ex_date
+                    adj_close.loc[mask, sym] = adj_close.loc[mask, sym] / factor
+                    adj_high.loc[mask, sym] = adj_high.loc[mask, sym] / factor
+                    adj_low.loc[mask, sym] = adj_low.loc[mask, sym] / factor
+                    adj_vol.loc[mask, sym] = adj_vol.loc[mask, sym] * factor
+
+    # Forward fill missing trading days and backfill start
     adj_close = adj_close.ffill().bfill()
     adj_high = adj_high.ffill().bfill()
     adj_low = adj_low.ffill().bfill()

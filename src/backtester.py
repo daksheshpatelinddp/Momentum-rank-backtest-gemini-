@@ -40,10 +40,9 @@ def execute_rank_backtest(
         freq='1D'
     )
 
-    stats = {
-        'CAGR (%)': portfolio.total_return().mean() * 100, # Aggregate portfolio estimate
+    return {
+        'CAGR (%)': portfolio.total_return().mean() * 100,
         'Sharpe': portfolio.sharpe_ratio().mean(),
         'Max Drawdown (%)': portfolio.max_drawdown().mean() * 100,
         'Trades': portfolio.trades.count().sum()
     }
-    return stats

@@ -17,9 +17,7 @@ def compute_indicator_gate(
     rsi_max: float = 70,
     vol_surge_mult: float = 1.2
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Generates Technical Gate Mask and Risk-Adjusted Momentum Rank Matrix.
-    """
+    """Generates Technical Gate Mask and Risk-Adjusted Momentum Rank Matrix."""
     # 1. Trend Filter (Close > 200 SMA)
     sma_200 = close_prices.rolling(window=200).mean()
     trend_filter = close_prices > sma_200
@@ -36,16 +34,15 @@ def compute_indicator_gate(
     turnover_cr = (close_prices * volumes) / 1e7
     liquidity_filter = turnover_cr.rolling(window=20).mean() >= min_turnover_cr
 
-    # Master Gate
+    # Master Technical Gate
     technical_gate = trend_filter & rsi_filter & vol_filter & liquidity_filter
 
-    # 5. Compute Risk-Adjusted Momentum (6M return / annualized vol)
+    # 5. Risk-Adjusted Momentum (6M return / annualized vol)
     ret_6m = close_prices.shift(10) / close_prices.shift(126) - 1
     ann_vol = close_prices.pct_change().rolling(window=126).std() * np.sqrt(252)
     mom_score = ret_6m / ann_vol
 
     # Rank across Universe (Rank 1 = Highest Momentum)
-    # Mask out illiquid stocks prior to ranking
     valid_scores = mom_score.where(liquidity_filter, np.nan)
     rank_matrix = valid_scores.rank(axis=1, ascending=False, method='min')
 
